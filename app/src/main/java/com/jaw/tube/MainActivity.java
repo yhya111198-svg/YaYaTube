@@ -18,15 +18,12 @@ import android.widget.*;
 import com.yausername.youtubedl_android.YoutubeDL;
 import com.yausername.youtubedl_android.YoutubeDLRequest;
 import com.yausername.youtubedl_android.YoutubeDLResponse;
-import com.yausername.youtubedl_android.ffmpeg.FFmpeg;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import kotlin.Unit;
-import kotlin.jvm.functions.Function3;
 
 public class MainActivity extends Activity {
     private final ExecutorService pool=Executors.newSingleThreadExecutor();
@@ -66,7 +63,7 @@ public class MainActivity extends Activity {
         root.addView(text("الملفات بتتحفظ في Downloads / YaYaTube. الجودات الأعلى ممكن تحتاج دمج الصوت مع الفيديو.",13,0xff8194af,false));
         inspect.setOnClickListener(v->inspectVideo());download.setOnClickListener(v->downloadVideo());
         if (Intent.ACTION_SEND.equals(getIntent().getAction())) {String shared=getIntent().getStringExtra(Intent.EXTRA_TEXT);if(shared!=null)urlInput.setText(shared);}
-        pool.execute(()->{try{YoutubeDL.getInstance().init(getApplicationContext());FFmpeg.getInstance().init(getApplicationContext());ready=true;message("جاهز. الصق الرابط واضغط عرض الجودات.");}catch(Exception e){message("تعذر تهيئة التحميل: "+e.getMessage());}});
+        pool.execute(()->{try{YoutubeDL.getInstance().init(getApplicationContext());ready=true;message("جاهز. الصق الرابط واضغط عرض الجودات.");}catch(Exception e){message("تعذر تهيئة التحميل: "+e.getMessage());}});
     }
     private void inspectVideo(){
         if(!ready||busy)return;
@@ -99,25 +96,12 @@ public class MainActivity extends Activity {
             try{
                 YoutubeDLRequest req=new YoutubeDLRequest(url);
                 req.addOption("--no-playlist");req.addOption("--restrict-filenames");
-                req.addOption("--merge-output-format","mp4");
                 req.addOption("-o",new File(tempDir,"%(title).120s.%(ext)s").getAbsolutePath());
                 if(selected.matches("\\d+p")){
                     String h=selected.substring(0,selected.length()-1);
-                    req.addOption("-f","bestvideo[height<="+h+"]+bestaudio/best[height<="+h+"]/best");
-                }else req.addOption("-f","bestvideo+bestaudio/best");
-                String processId = "yaya_download_" + System.currentTimeMillis();
-                Function3<Float, Long, String, Unit> callback = new Function3<Float, Long, String, Unit>() {
-                    @Override
-                    public Unit invoke(Float progress, Long eta, String line) {
-                        runOnUiThread(() -> {
-                            int percent = Math.max(0, Math.min(100, Math.round(progress)));
-                            bar.setProgress(percent);
-                            status.setText("جاري التحميل: " + percent + "% • " + (line == null ? "" : line));
-                        });
-                        return Unit.INSTANCE;
-                    }
-                };
-                YoutubeDL.getInstance().execute(req, processId, callback);
+                    req.addOption("-f","best[height<="+h+"]/best");
+                }else req.addOption("-f","best");
+                YoutubeDL.getInstance().execute(req,(progress,eta)->runOnUiThread(()->{bar.setProgress(Math.max(0,Math.min(100,Math.round(progress))));status.setText("جاري التحميل: "+Math.round(progress)+"% • باقي حوالي "+eta+" ثانية");}));
                 File[] files=tempDir.listFiles();int count=0;
                 if(files!=null)for(File f:files){if(!f.isFile()||f.getName().endsWith(".part")||f.getName().endsWith(".ytdl"))continue;copyToDownloads(f);count++;}
                 if(count==0)throw new IOException("التحميل انتهى بدون ملف صالح");
@@ -130,13 +114,13 @@ public class MainActivity extends Activity {
         if(Build.VERSION.SDK_INT>=29){
             ContentValues values=new ContentValues();values.put(MediaStore.Downloads.DISPLAY_NAME,file.getName());
             values.put(MediaStore.Downloads.MIME_TYPE,file.getName().endsWith(".webm")?"video/webm":"video/mp4");
-            values.put(MediaStore.Downloads.RELATIVE_PATH,Environment.DIRECTORY_DOWNLOADS+"/YaYaTube");
+            values.put(MediaStore.Downloads.RELATIVE_PATH,Environment.DIRECTORY_DOWNLOADS+"/JawTube");
             values.put(MediaStore.Downloads.IS_PENDING,1);
             ContentResolver resolver=getContentResolver();Uri uri=resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI,values);if(uri==null)throw new IOException("لا يمكن إنشاء ملف التنزيل");
             boolean done=false;try(InputStream in=new FileInputStream(file);OutputStream out=resolver.openOutputStream(uri)){if(out==null)throw new IOException("لا يمكن فتح الملف");byte[] buf=new byte[65536];int n;while((n=in.read(buf))!=-1)out.write(buf,0,n);done=true;}
             finally{if(done){ContentValues finish=new ContentValues();finish.put(MediaStore.Downloads.IS_PENDING,0);resolver.update(uri,finish,null,null);}else resolver.delete(uri,null,null);}
         }else{
-            File dir=new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),"YaYaTube");if(!dir.exists()&&!dir.mkdirs())throw new IOException("تعذر إنشاء مجلد التنزيل");
+            File dir=new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),"JawTube");if(!dir.exists()&&!dir.mkdirs())throw new IOException("تعذر إنشاء مجلد التنزيل");
             try(InputStream in=new FileInputStream(file);OutputStream out=new FileOutputStream(new File(dir,file.getName()))){byte[] buf=new byte[65536];int n;while((n=in.read(buf))!=-1)out.write(buf,0,n);}
         }
     }
