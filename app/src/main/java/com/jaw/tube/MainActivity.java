@@ -18,13 +18,15 @@ import android.widget.*;
 import com.yausername.youtubedl_android.YoutubeDL;
 import com.yausername.youtubedl_android.YoutubeDLRequest;
 import com.yausername.youtubedl_android.YoutubeDLResponse;
-import com.yausername.youtubedl_android.FFmpeg;
+import com.yausername.youtubedl_android.ffmpeg.FFmpeg;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import kotlin.Unit;
+import kotlin.jvm.functions.Function3;
 
 public class MainActivity extends Activity {
     private final ExecutorService pool=Executors.newSingleThreadExecutor();
@@ -103,7 +105,19 @@ public class MainActivity extends Activity {
                     String h=selected.substring(0,selected.length()-1);
                     req.addOption("-f","bestvideo[height<="+h+"]+bestaudio/best[height<="+h+"]/best");
                 }else req.addOption("-f","bestvideo+bestaudio/best");
-                YoutubeDL.getInstance().execute(req,(progress,eta)->runOnUiThread(()->{bar.setProgress(Math.max(0,Math.min(100,Math.round(progress))));status.setText("جاري التحميل: "+Math.round(progress)+"% • باقي حوالي "+eta+" ثانية");}));
+                String processId = "yaya_download_" + System.currentTimeMillis();
+                Function3<Float, Long, String, Unit> callback = new Function3<Float, Long, String, Unit>() {
+                    @Override
+                    public Unit invoke(Float progress, Long eta, String line) {
+                        runOnUiThread(() -> {
+                            int percent = Math.max(0, Math.min(100, Math.round(progress)));
+                            bar.setProgress(percent);
+                            status.setText("جاري التحميل: " + percent + "% • " + (line == null ? "" : line));
+                        });
+                        return Unit.INSTANCE;
+                    }
+                };
+                YoutubeDL.getInstance().execute(req, processId, callback);
                 File[] files=tempDir.listFiles();int count=0;
                 if(files!=null)for(File f:files){if(!f.isFile()||f.getName().endsWith(".part")||f.getName().endsWith(".ytdl"))continue;copyToDownloads(f);count++;}
                 if(count==0)throw new IOException("التحميل انتهى بدون ملف صالح");
@@ -116,13 +130,13 @@ public class MainActivity extends Activity {
         if(Build.VERSION.SDK_INT>=29){
             ContentValues values=new ContentValues();values.put(MediaStore.Downloads.DISPLAY_NAME,file.getName());
             values.put(MediaStore.Downloads.MIME_TYPE,file.getName().endsWith(".webm")?"video/webm":"video/mp4");
-            values.put(MediaStore.Downloads.RELATIVE_PATH,Environment.DIRECTORY_DOWNLOADS+"/JawTube");
+            values.put(MediaStore.Downloads.RELATIVE_PATH,Environment.DIRECTORY_DOWNLOADS+"/YaYaTube");
             values.put(MediaStore.Downloads.IS_PENDING,1);
             ContentResolver resolver=getContentResolver();Uri uri=resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI,values);if(uri==null)throw new IOException("لا يمكن إنشاء ملف التنزيل");
             boolean done=false;try(InputStream in=new FileInputStream(file);OutputStream out=resolver.openOutputStream(uri)){if(out==null)throw new IOException("لا يمكن فتح الملف");byte[] buf=new byte[65536];int n;while((n=in.read(buf))!=-1)out.write(buf,0,n);done=true;}
             finally{if(done){ContentValues finish=new ContentValues();finish.put(MediaStore.Downloads.IS_PENDING,0);resolver.update(uri,finish,null,null);}else resolver.delete(uri,null,null);}
         }else{
-            File dir=new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),"JawTube");if(!dir.exists()&&!dir.mkdirs())throw new IOException("تعذر إنشاء مجلد التنزيل");
+            File dir=new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),"YaYaTube");if(!dir.exists()&&!dir.mkdirs())throw new IOException("تعذر إنشاء مجلد التنزيل");
             try(InputStream in=new FileInputStream(file);OutputStream out=new FileOutputStream(new File(dir,file.getName()))){byte[] buf=new byte[65536];int n;while((n=in.read(buf))!=-1)out.write(buf,0,n);}
         }
     }
