@@ -18,7 +18,7 @@ import android.widget.*;
 import com.yausername.youtubedl_android.YoutubeDL;
 import com.yausername.youtubedl_android.YoutubeDLRequest;
 import com.yausername.youtubedl_android.YoutubeDLResponse;
-import com.yausername.youtubedl_android.ffmpeg.FFmpeg;
+import com.yausername.youtubedl_android.FFmpeg;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
