@@ -18,6 +18,8 @@ import android.widget.*;
 import com.yausername.youtubedl_android.YoutubeDL;
 import com.yausername.youtubedl_android.YoutubeDLRequest;
 import com.yausername.youtubedl_android.YoutubeDLResponse;
+import kotlin.Unit;
+import kotlin.jvm.functions.Function3;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
@@ -34,6 +36,18 @@ public class MainActivity extends Activity {
     private Button inspect, download;
     private final ArrayList<String> options = new ArrayList<>();
     private volatile boolean ready=false, busy=false;
+    private final String downloadProcessId = "YaYaTubeDownload";
+    private final Function3<Float, Long, String, Unit> progressCallback =
+        new Function3<Float, Long, String, Unit>() {
+            @Override public Unit invoke(Float progress, Long eta, String line) {
+                runOnUiThread(() -> {
+                    int value = Math.max(0, Math.min(100, Math.round(progress)));
+                    bar.setProgress(value);
+                    status.setText("جاري التحميل: " + value + "% • باقي حوالي " + eta + " ثانية");
+                });
+                return Unit.INSTANCE;
+            }
+        };
     private String videoUrl="";
     private final int navy=Color.rgb(12,19,37), cyan=Color.rgb(0,190,205);
 
@@ -101,7 +115,7 @@ public class MainActivity extends Activity {
                     String h=selected.substring(0,selected.length()-1);
                     req.addOption("-f","best[height<="+h+"]/best");
                 }else req.addOption("-f","best");
-                YoutubeDL.getInstance().execute(req,(progress,eta)->runOnUiThread(()->{bar.setProgress(Math.max(0,Math.min(100,Math.round(progress))));status.setText("جاري التحميل: "+Math.round(progress)+"% • باقي حوالي "+eta+" ثانية");}));
+                YoutubeDL.getInstance().execute(req, downloadProcessId, progressCallback);
                 File[] files=tempDir.listFiles();int count=0;
                 if(files!=null)for(File f:files){if(!f.isFile()||f.getName().endsWith(".part")||f.getName().endsWith(".ytdl"))continue;copyToDownloads(f);count++;}
                 if(count==0)throw new IOException("التحميل انتهى بدون ملف صالح");
@@ -112,26 +126,3 @@ public class MainActivity extends Activity {
     }
     private void copyToDownloads(File file)throws IOException{
         if(Build.VERSION.SDK_INT>=29){
-            ContentValues values=new ContentValues();values.put(MediaStore.Downloads.DISPLAY_NAME,file.getName());
-            values.put(MediaStore.Downloads.MIME_TYPE,file.getName().endsWith(".webm")?"video/webm":"video/mp4");
-            values.put(MediaStore.Downloads.RELATIVE_PATH,Environment.DIRECTORY_DOWNLOADS+"/JawTube");
-            values.put(MediaStore.Downloads.IS_PENDING,1);
-            ContentResolver resolver=getContentResolver();Uri uri=resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI,values);if(uri==null)throw new IOException("لا يمكن إنشاء ملف التنزيل");
-            boolean done=false;try(InputStream in=new FileInputStream(file);OutputStream out=resolver.openOutputStream(uri)){if(out==null)throw new IOException("لا يمكن فتح الملف");byte[] buf=new byte[65536];int n;while((n=in.read(buf))!=-1)out.write(buf,0,n);done=true;}
-            finally{if(done){ContentValues finish=new ContentValues();finish.put(MediaStore.Downloads.IS_PENDING,0);resolver.update(uri,finish,null,null);}else resolver.delete(uri,null,null);}
-        }else{
-            File dir=new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),"JawTube");if(!dir.exists()&&!dir.mkdirs())throw new IOException("تعذر إنشاء مجلد التنزيل");
-            try(InputStream in=new FileInputStream(file);OutputStream out=new FileOutputStream(new File(dir,file.getName()))){byte[] buf=new byte[65536];int n;while((n=in.read(buf))!=-1)out.write(buf,0,n);}
-        }
-    }
-    private boolean valid(String url){try{Uri u=Uri.parse(url);return ("https".equals(u.getScheme())||"http".equals(u.getScheme()))&&u.getHost()!=null;}catch(Exception ex){return false;}}
-    private void message(String msg){runOnUiThread(()->status.setText(msg));}
-    private void updateSpinner(){ArrayAdapter<String> adapter=new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,options);quality.setAdapter(adapter);}
-    private TextView text(String s,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextColor(color);t.setTextSize(size);t.setGravity(Gravity.RIGHT);if(bold)t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);return t;}
-    private Button button(String s){Button b=new Button(this);b.setText(s);b.setTextColor(navy);b.setTextSize(16);b.setAllCaps(false);b.setBackground(bg(cyan,14));return b;}
-    private GradientDrawable bg(int color,int r){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(r));return d;}
-    private int dp(int d){return (int)(d*getResources().getDisplayMetrics().density);}
-    private void space(LinearLayout l,int px){View v=new View(this);l.addView(v,new LinearLayout.LayoutParams(1,dp(px)));}
-    private void deleteTree(File dir){File[] files=dir.listFiles();if(files!=null)for(File f:files){if(f.isDirectory())deleteTree(f);else f.delete();}dir.delete();}
-    @Override protected void onDestroy(){super.onDestroy();pool.shutdown();}
-}
